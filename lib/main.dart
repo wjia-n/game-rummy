@@ -1,25 +1,74 @@
 import 'package:flutter/material.dart';
-import 'package:wajiha_game_core/wajiha_game_core.dart';
-import 'game_screen.dart';
+import 'package:flutter/services.dart';
+import 'screens/splash_screen.dart';
+import 'services/audio_service.dart';
+import 'services/settings_service.dart';
+import 'theme/felt_table.dart';
+import 'theme/felt_themes.dart';
 
-void main() => runApp(const RummyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  final settings = RummySettings();
+  await settings.load();
+  final audio = RummyAudio();
+  audio.configure(
+    musicOn: settings.musicOn,
+    sfxOn: settings.sfxOn,
+    volume: settings.volume,
+  );
+  runApp(RummyApp(settings: settings, audio: audio));
+}
 
-class RummyApp extends StatelessWidget {
-  const RummyApp({super.key});
+class RummyApp extends StatefulWidget {
+  final RummySettings settings;
+  final RummyAudio audio;
+  const RummyApp({super.key, required this.settings, required this.audio});
+
+  @override
+  State<RummyApp> createState() => _RummyAppState();
+}
+
+class _RummyAppState extends State<RummyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.audio.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause (not stop) on interruption so music resumes exactly where it
+    // left off; game screens additionally freeze their engines.
+    if (state == AppLifecycleState.paused) {
+      widget.audio.onAppPaused();
+    } else if (state == AppLifecycleState.resumed) {
+      widget.audio.onAppResumed();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GameShell(
-      variant: ShellVariant.candyShop,
-      title: 'Rummy',
-      tagline: 'Meld sneaky sets, drop slick runs, and shout RUMMY before your rivals do!',
-      emoji: '🎴',
-      slug: 'rummy',
-      howToPlay:
-          '• You get 7 cards. Draw from the stock or snatch the top discard.\n• Meld SETS (3-4 of a kind) or RUNS (3+ in sequence, same suit).\n• Discard one card to end your turn.\n• Empty your hand to yell RUMMY! Rivals score their leftovers.\n• Lowest total after 3 rounds takes the crown. 👑',
-      playerOptions: const [1, 2, 3, 4],
-      supportsBots: true,
-      gameBuilder: (ctx, players, cb) => RummyScreen(players: players, callbacks: cb),
+    return ListenableBuilder(
+      listenable: widget.settings,
+      builder: (_, _) => MaterialApp(
+        title: 'Rummy',
+        debugShowCheckedModeBanner: false,
+        theme:
+            Felt.theme(FeltThemes.byId(widget.settings.themeId, custom: widget.settings.customTheme)),
+        home:
+            SplashScreen(audio: widget.audio, settings: widget.settings),
+      ),
     );
   }
 }

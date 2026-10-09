@@ -1,0 +1,312 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/felt_themes.dart';
+
+/// Persisted settings + stats for Rummy. Survives app restarts.
+///
+/// Stores: audio toggles, player names (4 slots), theme/appearance choices
+/// (incl. custom theme colors), game-mode setup (players, bots, difficulty),
+/// Pro unlock state, and lifetime stats.
+class RummySettings extends ChangeNotifier {
+  static const _kMusic = 'rummy_music_on';
+  static const _kSfx = 'rummy_sfx_on';
+  static const _kVolume = 'rummy_volume';
+  static const _kPlayers = 'rummy_player_count';
+  static const _kBots = 'rummy_bot_count';
+  static const _kDifficulty = 'rummy_bot_difficulty'; // 0 easy, 1 medium, 2 hard
+  static const _kNames = 'rummy_player_names'; // legacy unordered StringSet key
+  /// Order-safe player-name storage: a single JSON string. Android's
+  /// SharedPreferences stores StringLists as an unordered StringSet, so the
+  /// old key scrambled name order on every app restart. Never use a
+  /// StringList for ordered data on Android.
+  static const _kNamesJson = 'rummy_player_names_json';
+  static const _kTheme = 'rummy_theme_id';
+  static const _kCardBack = 'rummy_token_shape';
+  static const _kCardFace = 'rummy_dice_style';
+  static const _kWins = 'rummy_wins';
+  static const _kGames = 'rummy_games_played';
+  static const _kBestScore = 'rummy_best_score';
+  static const _kIsPro = 'rummy_is_pro';
+  static const _kCustomPrefix = 'rummy_custom_';
+
+  static const defaultNames = ['Ruby', 'Sapphire', 'Emerald', 'Amber'];
+
+  /// Encode the 4 player names as one JSON string (order-preserving).
+  static String encodePlayerNames(List<String> names) => jsonEncode(names);
+
+  static String _cleanName(int i, Object? v) {
+    final s = v is String ? v.trim() : '';
+    return s.isEmpty ? defaultNames[i] : s;
+  }
+
+  /// Decode persisted names; falls back to defaults on missing/corrupt data.
+  static List<String> decodePlayerNames(String? raw) {
+    if (raw == null) return List.of(defaultNames);
+    try {
+      final d = jsonDecode(raw);
+      if (d is List && d.length == 4) {
+        return [for (int i = 0; i < 4; i++) _cleanName(i, d[i])];
+      }
+    } catch (_) {}
+    return List.of(defaultNames);
+  }
+
+  bool musicOn = true;
+  bool sfxOn = true;
+  double volume = 0.8;
+  int playerCount = 2;
+  int botCount = 1;
+  int difficulty = 1; // medium default
+  List<String> playerNames = List.of(defaultNames);
+  String themeId = 'classic';
+  int cardBack = 0;
+  int cardFace = 0;
+  int wins = 0;
+  int gamesPlayed = 0;
+  int bestScore = 0; // lowest winning deadwood (0 = none yet)
+  bool isPro = false;
+
+  /// Custom theme colors (ARGB ints). Defaults mirror the Classic Parlor.
+  Map<String, int> customColors = Map.of(_defaultCustomColors);
+
+  static const Map<String, int> _defaultCustomColors = {
+    'woodDark': 0xFF3B2416,
+    'woodMid': 0xFF5C3A21,
+    'woodDeep': 0xFF241309,
+    'accent': 0xFFC9A227,
+    'accentLight': 0xFFE8CE7A,
+    'accentDark': 0xFF8A6D1A,
+    'ivory': 0xFFF5EFE0,
+    'felt': 0xFF1E4D3B,
+    'trackLight': 0xFFEFE3C8,
+    'trackDark': 0xFFE4D3A8,
+    'pc0': 0xFFA31621,
+    'pc1': 0xFF1D4E9E,
+    'pc2': 0xFF1B7A4D,
+    'pc3': 0xFFD99A2B,
+  };
+
+  /// Builds the user-designed custom theme from stored colors.
+  FeltThemeDef get customTheme {
+    Color c(String k) => Color(customColors[k] ?? 0xFF000000);
+    return FeltThemeDef(
+      id: 'custom',
+      name: 'My Creation',
+      woodDark: c('woodDark'),
+      woodMid: c('woodMid'),
+      woodDeep: c('woodDeep'),
+      accent: c('accent'),
+      accentLight: c('accentLight'),
+      accentDark: c('accentDark'),
+      ivory: c('ivory'),
+      felt: c('felt'),
+      trackLight: c('trackLight'),
+      trackDark: c('trackDark'),
+      playerColors: [c('pc0'), c('pc1'), c('pc2'), c('pc3')],
+      playerColorNames: const ['One', 'Two', 'Three', 'Four'],
+    );
+  }
+
+  SharedPreferences? _prefs;
+
+  Future<void> load() async {
+    _prefs = await SharedPreferences.getInstance();
+    final p = _prefs!;
+    musicOn = p.getBool(_kMusic) ?? true;
+    sfxOn = p.getBool(_kSfx) ?? true;
+    volume = p.getDouble(_kVolume) ?? 0.8;
+    playerCount = (p.getInt(_kPlayers) ?? 2).clamp(2, 4);
+    botCount = (p.getInt(_kBots) ?? 1).clamp(0, 3);
+    difficulty = (p.getInt(_kDifficulty) ?? 1).clamp(0, 2);
+    // Player names: prefer the order-safe JSON key. Fall back to the legacy
+    // StringList key once (one-time migration); it may already be scrambled
+    // on Android, which is exactly the bug this replaces.
+    final namesRaw = p.getString(_kNamesJson);
+    if (namesRaw != null) {
+      playerNames = decodePlayerNames(namesRaw);
+    } else {
+      final legacy = p.getStringList(_kNames);
+      playerNames = (legacy != null && legacy.length == 4)
+          ? [for (int i = 0; i < 4; i++) _cleanName(i, legacy[i])]
+          : List.of(defaultNames);
+    }
+    themeId = p.getString(_kTheme) ?? 'classic';
+    cardBack = (p.getInt(_kCardBack) ?? 0).clamp(0, CardBackStyles.names.length - 1);
+    cardFace = (p.getInt(_kCardFace) ?? 0).clamp(0, CardFaceStyles.names.length - 1);
+    wins = p.getInt(_kWins) ?? 0;
+    gamesPlayed = p.getInt(_kGames) ?? 0;
+    bestScore = p.getInt(_kBestScore) ?? 0;
+    isPro = p.getBool(_kIsPro) ?? false;
+    for (final k in _defaultCustomColors.keys) {
+      customColors[k] =
+          p.getInt('$_kCustomPrefix$k') ?? _defaultCustomColors[k]!;
+    }
+    _enforceFreeLimits(silent: true);
+    notifyListeners();
+  }
+
+  Future<void> _save() async {
+    final p = _prefs;
+    if (p == null) return;
+    await p.setBool(_kMusic, musicOn);
+    await p.setBool(_kSfx, sfxOn);
+    await p.setDouble(_kVolume, volume);
+    await p.setInt(_kPlayers, playerCount);
+    await p.setInt(_kBots, botCount);
+    await p.setInt(_kDifficulty, difficulty);
+    await p.setString(_kNamesJson, encodePlayerNames(playerNames));
+    await p.remove(_kNames); // drop the legacy unordered key for good
+    await p.setString(_kTheme, themeId);
+    await p.setInt(_kCardBack, cardBack);
+    await p.setInt(_kCardFace, cardFace);
+    await p.setInt(_kWins, wins);
+    await p.setInt(_kGames, gamesPlayed);
+    await p.setInt(_kBestScore, bestScore);
+    await p.setBool(_kIsPro, isPro);
+    for (final e in customColors.entries) {
+      await p.setInt('$_kCustomPrefix${e.key}', e.value);
+    }
+  }
+
+  /// Free-tier limits: clamp pro-only choices back when not Pro.
+  /// Called after load and whenever Pro status could have changed.
+  void _enforceFreeLimits({bool silent = false}) {
+    if (isPro) return;
+    var changed = false;
+    // The custom theme creator is a Pro feature ('custom' is not covered by
+    // FeltThemes.isProTheme, so it needs an explicit check).
+    if (themeId == 'custom' || FeltThemes.isProTheme(themeId)) {
+      themeId = 'classic';
+      changed = true;
+    }
+    if (CardBackStyles.isPro(cardBack)) {
+      cardBack = 0;
+      changed = true;
+    }
+    if (CardFaceStyles.isPro(cardFace)) {
+      cardFace = 0;
+      changed = true;
+    }
+    if (difficulty > 1) {
+      difficulty = 1;
+      changed = true;
+    }
+    if (changed && !silent) {
+      notifyListeners();
+      _save();
+    }
+  }
+
+  Future<void> setPro(bool v) async {
+    isPro = v;
+    if (!v) _enforceFreeLimits();
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setCustomColor(String key, int argb) async {
+    if (!isPro) return; // custom theme creator is a Pro feature
+    if (!_defaultCustomColors.containsKey(key)) return;
+    customColors[key] = argb;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> resetCustomColors() async {
+    customColors = Map.of(_defaultCustomColors);
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setMusic(bool v) async {
+    musicOn = v;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setSfx(bool v) async {
+    sfxOn = v;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setVolume(double v) async {
+    volume = v.clamp(0.0, 1.0);
+    notifyListeners();
+    await _save();
+  }
+
+  /// Full mode setup: [players] 2..4 humans+bots, [bots] 0..players-1,
+  /// [difficulty] 0 easy / 1 medium / 2 hard, plus which seats are bots.
+  /// [botSeats] lists player indices that are bots (length == bots).
+  List<int> botSeats = [1];
+
+  Future<void> setSetup({
+    required int players,
+    required List<int> botSeats,
+    required int difficulty,
+  }) async {
+    playerCount = players.clamp(2, 4);
+    this.botSeats = [
+      for (final s in botSeats)
+        if (s >= 0 && s < playerCount) s
+    ];
+    botCount = this.botSeats.length.clamp(0, playerCount - 1);
+    // Never allow all seats to be bots — at least one human must play.
+    if (botCount >= playerCount) {
+      this.botSeats = this.botSeats.sublist(0, playerCount - 1);
+      botCount = this.botSeats.length;
+    }
+    this.difficulty = difficulty.clamp(0, 2);
+    // Hard mode is a Pro feature.
+    if (!isPro && this.difficulty > 1) this.difficulty = 1;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setPlayerName(int index, String name) async {
+    if (index < 0 || index > 3) return;
+    final clean = name.trim();
+    playerNames[index] = clean.isEmpty ? defaultNames[index] : clean;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setTheme(String id) async {
+    // Pro-only themes (incl. the custom theme creator) require Pro;
+    // silently ignore otherwise (UI shows lock).
+    if (!isPro && (id == 'custom' || FeltThemes.isProTheme(id))) return;
+    themeId = id;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setCardBack(int v) async {
+    v = v.clamp(0, CardBackStyles.names.length - 1);
+    if (!isPro && CardBackStyles.isPro(v)) return;
+    cardBack = v;
+    notifyListeners();
+    await _save();
+  }
+
+  Future<void> setCardFace(int v) async {
+    v = v.clamp(0, CardFaceStyles.names.length - 1);
+    if (!isPro && CardFaceStyles.isPro(v)) return;
+    cardFace = v;
+    notifyListeners();
+    await _save();
+  }
+
+  /// Record a finished game. [humanWon] true if a human player won.
+  Future<void> recordGame({required bool humanWon, required int score}) async {
+    gamesPlayed++;
+    if (humanWon) {
+      wins++;
+      if (bestScore == 0 || score < bestScore) bestScore = score;
+    }
+    notifyListeners();
+    await _save();
+  }
+}

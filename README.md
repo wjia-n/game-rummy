@@ -1,17 +1,18 @@
-# tictactoe
+# Rummy — The Felt Table Edition
 
-A new Flutter project.
+Classic meld-building card game by **WAJIHA** — one of 100 original casual games.
+
+- 2–4 players: vs bots (Easy / Medium / Hard) or local pass-and-play
+- Animated deals, visible bot turns with narration, engine-owned turn state machine + watchdog
+- 14 felt-table themes, 10 card-back designs, 8 card-face styles, custom theme creator (PRO)
+- Renameable players (order-safe persistence), stats, pause/resume
+- Synthesized card-room audio: menu + game music, full SFX, toggles + volume
+- Rummy PRO (one-time unlock) + tip jar via real Play Billing
+- Package: `com.gameswajiha.rummy`
+
+See [RULES.md](RULES.md) for the authoritative game rules.
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Standard Flutter project. `flutter pub get`, then `flutter run`.
+`flutter analyze --no-fatal-infos` must pass (CI enforces it).

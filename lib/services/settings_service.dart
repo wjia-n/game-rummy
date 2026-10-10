@@ -66,7 +66,7 @@ class RummySettings extends ChangeNotifier {
   int wins = 0;
   int gamesPlayed = 0;
   int bestScore = 0; // lowest winning deadwood (0 = none yet)
-  bool isPro = false;
+  bool isPro = true; // everything unlocked — no Pro version
 
   /// Custom theme colors (ARGB ints). Defaults mirror the Classic Parlor.
   Map<String, int> customColors = Map.of(_defaultCustomColors);
@@ -138,7 +138,7 @@ class RummySettings extends ChangeNotifier {
     wins = p.getInt(_kWins) ?? 0;
     gamesPlayed = p.getInt(_kGames) ?? 0;
     bestScore = p.getInt(_kBestScore) ?? 0;
-    isPro = p.getBool(_kIsPro) ?? false;
+    isPro = true; // everything unlocked
     for (final k in _defaultCustomColors.keys) {
       customColors[k] =
           p.getInt('$_kCustomPrefix$k') ?? _defaultCustomColors[k]!;

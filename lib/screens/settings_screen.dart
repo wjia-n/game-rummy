@@ -6,6 +6,7 @@ import '../services/settings_service.dart';
 import '../theme/felt_table.dart';
 import '../theme/felt_themes.dart';
 import 'pro_screen.dart';
+import '../transfer/transfer_ui.dart';
 
 /// Settings — walnut drawer metaphor, theme-aware.
 class SettingsScreen extends StatefulWidget {
@@ -91,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+              TransferSaveTile(gameSlug: 'rummy'),
                 _SectionTitle('Sound', t),
                 SettingRow(
                   theme: t,

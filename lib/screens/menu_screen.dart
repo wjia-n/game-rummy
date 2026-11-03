@@ -887,7 +887,7 @@ class _SupportCard extends StatelessWidget {
         child: Column(
           children: [
             Text(
-              'This game is fully unlocked. Get a Gold Star to show your support!',
+              'This game is fully unlocked. Get a Gold Star!',
               style: Felt.body(14, theme: theme),
               textAlign: TextAlign.center,
             ),

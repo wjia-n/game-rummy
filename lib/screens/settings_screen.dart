@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import '../services/audio_service.dart';
@@ -145,10 +146,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const SizedBox(height: 10),
-                _SectionTitle('Rummy PRO', t),
+                _SectionTitle(
+                    defaultTargetPlatform == TargetPlatform.iOS
+                        ? 'Gold Star'
+                        : 'Rummy PRO',
+                    t),
                 SettingRow(
                   theme: t,
-                  label: s.isPro ? 'PRO active ✦' : 'Unlock PRO',
+                  label: defaultTargetPlatform == TargetPlatform.iOS
+                      ? '⭐ Gold Star'
+                      : (s.isPro ? 'PRO active ✦' : 'Unlock PRO'),
                   control: GestureDetector(
                     onTap: () {
                       audio.click();
@@ -172,7 +179,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: t.accentLight, width: 2),
                       ),
                       child: Text(
-                        s.isPro ? '✦ PRO' : 'View',
+                        defaultTargetPlatform == TargetPlatform.iOS
+                            ? 'View'
+                            : (s.isPro ? '✦ PRO' : 'View'),
                         style: Felt.label(13,
                             theme: t,
                             color: s.isPro ? t.woodDeep : t.ivory),
@@ -332,6 +341,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                   ],
                 ),
+                // Android-only: the coffee/chocolate tip products are never
+                // queried on iOS (iOS product set is Gold Star only), so this
+                // section would render as a dead tip prompt there.
+                if (defaultTargetPlatform != TargetPlatform.iOS) ...[
                 const SizedBox(height: 10),
                 _SectionTitle('Support', t),
                 Container(
@@ -395,6 +408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
+                ],
                 const SizedBox(height: 10),
                 _SectionTitle('About', t),
                 Text(
